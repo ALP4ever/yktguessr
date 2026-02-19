@@ -1,17 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './GuessMap.css';
 
-function GuessMap({ onGuess, disabled, actualLocation, guessedLocation }) {
+function GuessMap({ onGuess, disabled, actualLocation, guessedLocation, helpActive = false, onHelp, helpRadiusKm = 100, helpCenter, language = 'ru', onVisibilityChange }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   const actualMarkerRef = useRef(null);
   const lineRef = useRef(null);
+  const helpCircleRef = useRef(null);
   const clickListenerRef = useRef(null);
 
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isVisible, setIsVisible] = useState(window.innerWidth > 600); 
-  // На мобилке карта скрыта, на ПК видна сразу
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [isVisible, setIsVisible] = useState(false);
+  const [hasMarker, setHasMarker] = useState(false); // Отслеживаем наличие маркера для активации кнопки
+  // Карта открывается по кнопке и сразу в full-screen (без миникарты)
 
   useEffect(() => {
     if (window.google && window.google.maps && isVisible) {
@@ -25,9 +27,43 @@ function GuessMap({ onGuess, disabled, actualLocation, guessedLocation }) {
     };
   }, [isVisible]);
 
+  // Сообщаем родителю об изменении видимости карты
+  useEffect(() => {
+    if (typeof onVisibilityChange === 'function') {
+      onVisibilityChange(isVisible);
+    }
+  }, [isVisible, onVisibilityChange]);
+
   useEffect(() => {
     if (mapInstanceRef.current && actualLocation && guessedLocation) {
       showResults();
+    }
+  }, [actualLocation, guessedLocation]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    // Удаляем визуализации прошлого раунда, если начинаем новый
+    if (!guessedLocation) {
+      if (actualMarkerRef.current) {
+        actualMarkerRef.current.setMap(null);
+        actualMarkerRef.current = null;
+      }
+      if (lineRef.current) {
+        lineRef.current.setMap(null);
+        lineRef.current = null;
+      }
+      // Сбрасываем маркер и состояние при новом раунде
+      if (markerRef.current) {
+        markerRef.current.setMap(null);
+        markerRef.current = null;
+        setHasMarker(false);
+      }
+      // Сбрасываем карту на центр Якутии
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.setCenter({ lat: 62.5, lng: 127 });
+        mapInstanceRef.current.setZoom(5);
+      }
     }
   }, [actualLocation, guessedLocation]);
 
@@ -45,6 +81,30 @@ function GuessMap({ onGuess, disabled, actualLocation, guessedLocation }) {
     }
   }, [disabled]);
 
+  useEffect(() => {
+    if (!mapInstanceRef.current || !actualLocation) return;
+
+    if (helpCircleRef.current) {
+      helpCircleRef.current.setMap(null);
+      helpCircleRef.current = null;
+    }
+
+    if (helpActive) {
+      helpCircleRef.current = new window.google.maps.Circle({
+        map: mapInstanceRef.current,
+        center: helpCenter || actualLocation,
+        radius: helpRadiusKm * 1000,
+        strokeColor: '#4285F4',
+        strokeOpacity: 0.5,
+        strokeWeight: 2,
+        fillColor: '#4285F4',
+        fillOpacity: 0.08,
+        clickable: false,
+      });
+      mapInstanceRef.current.panTo(actualLocation);
+    }
+  }, [helpActive, helpRadiusKm, actualLocation]);
+
   const initMap = () => {
     if (mapRef.current && window.google && window.google.maps) {
       mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
@@ -52,8 +112,12 @@ function GuessMap({ onGuess, disabled, actualLocation, guessedLocation }) {
         zoom: 5,
         mapTypeControl: false,
         streetViewControl: false,
+        zoomControl: false,
         fullscreenControl: false,
       });
+
+      // Сбрасываем состояние маркера при инициализации
+      setHasMarker(false);
 
       if (!disabled) {
         clickListenerRef.current = mapInstanceRef.current.addListener('click', (e) => {
@@ -85,6 +149,9 @@ function GuessMap({ onGuess, disabled, actualLocation, guessedLocation }) {
         strokeWeight: 3,
       },
     });
+    
+    // Обновляем состояние для активации кнопки
+    setHasMarker(true);
   };
 
   const showResults = () => {
@@ -124,6 +191,8 @@ function GuessMap({ onGuess, disabled, actualLocation, guessedLocation }) {
     mapInstanceRef.current.fitBounds(bounds);
   };
 
+  const isYakut = language === 'sah';
+
   const handleGuess = () => {
     if (!markerRef.current || disabled) return;
     const pos = markerRef.current.getPosition();
@@ -132,50 +201,57 @@ function GuessMap({ onGuess, disabled, actualLocation, guessedLocation }) {
 
   return (
     <>
-{/* Кнопка открытия карты на мобильных */}
-{!isVisible && (
-  <button className="open-map-btn" onClick={() => setIsVisible(true)}>
-    Открыть карту
-  </button>
-)}
+      {/* Кнопка открытия карты (и ПК, и мобилка) */}
+      {!isVisible && (
+        <button
+          className="open-map-btn"
+          onClick={() => {
+            setIsVisible(true);
+            setIsExpanded(true);
+          }}
+        >
+          {isYakut ? 'Картаны ас' : 'Открыть карту'}
+        </button>
+      )}
 
-{isVisible && (
-  <div className={`guess-map-container ${isExpanded ? 'expanded' : ''}`}>
+      {isVisible && (
+        <div className={`guess-map-container ${isExpanded ? 'expanded' : ''}`}>
 
-    {/* Кнопка свернуть (только мобильная) */}
-    <button 
-      className="close-map-btn"
-      onClick={() => {
-        setIsExpanded(false)
-        setIsVisible(false)
-      }}
-    >
-      ✕
-    </button>
+          {/* Кнопка закрыть карту */}
+          <button 
+            className="close-map-btn"
+            onClick={() => {
+              setIsExpanded(false);
+              setIsVisible(false);
+            }}
+          >
+            ✕
+          </button>
 
-    <div className="map-header">
-      <button 
-        className="expand-button"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {isExpanded ? '−' : '+'}
-      </button>
-    </div>
+          <div ref={mapRef} className="guess-map"></div>
 
-    <div ref={mapRef} className="guess-map"></div>
+          {!disabled && isExpanded && (
+            <button
+              type="button"
+              className={`help-button ${helpActive ? 'used' : ''}`}
+              onClick={onHelp}
+              disabled={helpActive}
+            >
+              {helpActive ? (isYakut ? 'Көмө түбэһин көстүбүт' : 'Подсказка включена') : (isYakut ? 'Көмө (радиус)' : 'Помощь (радиус)')}
+            </button>
+          )}
 
-    {!disabled && isExpanded && (
-      <button 
-        className="guess-button"
-        onClick={handleGuess}
-        disabled={!markerRef.current}
-      >
-        Угадать
-      </button>
-    )}
-  </div>
-)}
-
+          {!disabled && isExpanded && (
+            <button 
+              className="guess-button"
+              onClick={handleGuess}
+              disabled={!hasMarker}
+            >
+              {isYakut ? 'Билиир' : 'Угадать'}
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }

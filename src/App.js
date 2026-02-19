@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import Game from './components/Game';
 import StartScreen from './components/StartScreen';
-import ModeSelect from './components/ModeSelect';
-import places from './data/places.json';
 
 function App() {
   const [apiKey, setApiKey] = useState('');
   const [mapsLoaded, setMapsLoaded] = useState(false);
-  const [screen, setScreen] = useState('start'); // start | mode | game
-  const [gameMode, setGameMode] = useState('classic'); // classic | simple
+  const [screen, setScreen] = useState('start'); // start | game
+  const [language, setLanguage] = useState('ru'); // ru | sah
+  const [theme, setTheme] = useState('light'); // light | dark
 
   useEffect(() => {
     // Загружаем API ключ
@@ -43,40 +42,75 @@ function App() {
   };
 
   const handleStart = () => {
-    setScreen('mode');
+    setScreen('game');
   };
 
-  const handleSelectMode = (mode) => {
-    setGameMode(mode);
-    setScreen('game');
+  const toggleLanguage = () => {
+    setLanguage((prev) => (prev === 'ru' ? 'sah' : 'ru'));
   };
 
   const resetGame = () => {
     setScreen('start');
-    setGameMode('classic');
+  };
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
   if (!apiKey || !mapsLoaded) {
     return <div className="loading">Загрузка карт...</div>;
   }
 
+  const langLabel = language === 'ru' ? 'Язык: Русский' : 'Язык: Саха';
+  const themeLabel = theme === 'dark' ? 'Светлый режим' : 'Тёмный режим';
+
   return (
-    <div className="App">
-      {screen === 'start' && <StartScreen onStart={handleStart} />}
-      {screen === 'mode' && (
-        <ModeSelect
-          onSelectMode={handleSelectMode}
-          onBack={() => setScreen('start')}
+    <div className={`App theme-${theme}`}>
+      {screen === 'start' && (
+        <StartScreen
+          onStart={handleStart}
+          language={language}
         />
       )}
       {screen === 'game' && (
         <Game
-          apiKey={apiKey}
-          places={places}
           onReset={resetGame}
-          mode={gameMode}
+          language={language}
+          theme={theme}
         />
       )}
+
+      {/* Глобальные настройки (шестерёнка) — доступны на всех экранах */}
+      <div className="settings-fab">
+        <input id="settings-toggle" type="checkbox" className="settings-toggle-input" />
+        <label htmlFor="settings-toggle" className="settings-fab-button">
+          ⚙
+        </label>
+        <div className="settings-panel">
+          <button
+            type="button"
+            className="settings-item"
+            onClick={toggleTheme}
+          >
+            {themeLabel}
+          </button>
+          <button
+            type="button"
+            className="settings-item"
+            onClick={toggleLanguage}
+          >
+            {langLabel}
+          </button>
+          <a
+            href="https://t.me/alpinisti4"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="settings-item settings-link"
+          >
+            Связаться с нами
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
